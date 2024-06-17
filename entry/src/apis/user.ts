@@ -1,8 +1,9 @@
 import $api from '.'
 
 export const test = (data)=>{
-  return  $api.post('/test', data)
+  return $api.post('/test', data)
 }
+
 export const sendCode = (data)=>{
   return $api.post('/sendcode', data)
 }

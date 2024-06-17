@@ -7,10 +7,11 @@ import display from '@ohos.display';
 import common from '@ohos.app.ability.common';
 import request  from '@ohos.request';
 
-export const baseUrl = "192.168.50.101:3000";
+// 192.168.0.106
+export const baseUrl = "localhost:3000";
 
 const requestSelf = async (url , method: http.RequestMethod = http.RequestMethod.GET, extraData: any = {})=>{
-  console.log('到这里去操作了', url.includes('http'))
+  console.log('url里是否包含http，是否需要再拼接', url.includes('http'))
 
   const store = useStore;
 

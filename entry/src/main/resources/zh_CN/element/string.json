@@ -11,6 +11,10 @@
     {
       "name": "EntryAbility_label",
       "value": "label"
+    },
+    {
+      "name": "whyneedlocation",
+      "value": "需要获取位置信息才能提供完整的服务"
     }
   ]
 }

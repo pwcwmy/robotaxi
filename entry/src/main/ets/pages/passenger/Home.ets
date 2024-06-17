@@ -1,5 +1,11 @@
 import webview from '@ohos.web.webview';
-import { login } from '../../../../apis/user'
+import common from '@ohos.app.ability.common';
+import abilityAccessCtrl, { Permissions } from '@ohos.abilityAccessCtrl';
+import geoLocationManager from '@ohos.geoLocationManager';
+import router from '@ohos.router';
+import useStore from '../../../../store'
+import { test }  from '../../../../apis/user'
+import promptAction from '@ohos.promptAction';
 
 @Entry
 @Component
@@ -23,6 +29,28 @@ struct Home {
   }
   // 创建一个webview的控制器
   webController: webview.WebviewController = new webview.WebviewController();
+  ports: webview.WebMessagePort[];
+  @State startPlace:  string = '选择您上车的位置'
+  @State startLocationInfo: string = ''
+
+  initPorts = ()=>{
+    this.ports = this.webController.createWebMessagePorts();
+    //  this.ports[0]
+    //  this.ports[1]
+    // 主动的想网页内部触发一个message全局事件
+    this.webController.postMessage('__init_port__',[this.ports[0]],'*') ;// 把第一个通讯port传递给网页
+    this.ports[1].onMessageEvent((result:webview.WebMessage)=>{
+      console.log('从 web传递过来的数据', result)
+      const res = JSON.parse(result as string)
+      if(res.type === 'webready'){
+        this.getLocation()
+      }
+      if(res.type === 'passLocation'){
+        this.startPlace = res.payload.name
+        this.startLocationInfo = res.payload.location;
+      }
+    })
+  }
 
   // 侧栏的初始位移 -250
   @State offsetX: number = 0
@@ -31,15 +59,112 @@ struct Home {
   // 如果登录了就显示手机号，否则显示请登录按钮
   @State userPhone: string = ''
 
+  // OnPageShow()
+  onPageShow() {
+    console.log('页面加载完毕');
+    test({"a":1,"b":2}).then(res => {
+      console.log('test接口成功返回resp');
+    }).catch(error => {
+      console.error('请求失败！请查看错误详情:', error);
+    });
+  }
   // 约束手势：左拖动/右拖动
   private panOption: PanGestureOptions = new PanGestureOptions({
     direction: PanDirection.Left | PanDirection.Right,
   })
+
+  // context
+  private context = getContext(this) as common.UIAbilityContext
+
+  @State nowLocation: any = null;
+  getLocation = async ()=>{
+    const requestInfo = {
+      priority:0x201,  // 精度优先
+      scenario:0x303,  // 打车场景
+      maxAccuracy: 0,
+      distanceInterval: 1,
+    };
+    const location = await geoLocationManager.getCurrentLocation(requestInfo);
+    if(!location) {
+      setTimeout(()=>{
+        this.getLocation()
+      },100)
+      return false
+    }
+    console.log('获取的位置信息',JSON.stringify(location))
+    // 把这个location 传递给webview 以便地图获取最新的位置
+    const curLocation = { lng: location.longitude, lat: location.latitude };
+    this.nowLocation = curLocation
+    this.ports[1].postMessageEvent(JSON.stringify({
+      type:'setCenter',
+      payload:curLocation
+    }))
+    this.startWatchLocation(); // 并持续监听位置的变化
+  }
+
+  startWatchLocation = ()=>{
+    const requestInfo = {
+      priority:0x201,  // 精度优先
+      scenario:0x303,  // 打车场景
+    };
+    try {
+      geoLocationManager.on('locationChange', requestInfo ,(location)=>{
+        // 位置发生变化的回调处理
+        console.log('我们最新的位置',JSON.stringify(location))
+      })
+    } catch (e){
+
+    }
+
+  }
+  //  处理权限的获取
+  reqPermissionsFromUser(permissions: Array<Permissions>): void {
+    let atManger = abilityAccessCtrl.createAtManager();
+    atManger.requestPermissionsFromUser(this.context,permissions).then((data)=>{
+      let granStatus: Array<number>  = data.authResults;
+      for(const item of granStatus){
+        // 0 表示已经获得权限
+        console.log('当前的item的值', item)
+        if(item==0){
+          // 权限获取ok 执行得到权限之后的操作
+          this.getLocation(); // 获取gps位置信息
+        }  else {
+          // 跳转到系统设置让用户手动的去设置权限
+          this.openPermissionsInSystemSettings();
+          break;
+        }
+      }
+    })
+  }
+
+  private permissions: Array<Permissions> = [
+    'ohos.permission.APPROXIMATELY_LOCATION',
+    'ohos.permission.LOCATION',
+  ]
+  openPermissionsInSystemSettings = ()=>{
+    let wantInfo = {
+      action: 'action.settings.app.info',
+      parameters: {
+        settingsParamBundleName: 'com.example.myapplication' // 打开指定应用的详情页面
+      }
+    }
+    this.context.startAbility(wantInfo).then((res)=>{
+      console.log('设置的结果',res)
+      this.reqPermissionsFromUser(this.permissions); // 设置之后再重新尝试获取权限
+    })
+  }
+
   // 页面的构建函数
   build() {
     Column() {
       // 顶栏
       Row() {
+        Button('测试socket消息的发送').onClick(()=>{
+          this.context.eventHub.emit('sendmsg', {
+            type: 'test',
+            payload: 123456
+          })
+        })
         Image($r('app.media.user')).width(36) // 图片来源 iconfont
         Image($r('app.media.scan')).width(36)
       }.width('100%').height(50).position({x: 0, y: 0}).zIndex(9).justifyContent(FlexAlign.SpaceBetween).padding(10)
